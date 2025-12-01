@@ -279,7 +279,90 @@ def _(go, hist, mo, pl, stock_code, ticker):
     - 価格が雲を突破 → トレンド転換の可能性
     """)
 
+    import numpy as np
+
     from libs.ichimoku import IchimokuValues, get_ichimoku_values
+
+    def create_cloud_segments(dates, span1, span2):
+        """
+        Split Ichimoku cloud into colored segments based on bullish/bearish crossovers.
+
+        Args:
+            dates: List of date strings
+            span1: Polars Series or numpy array of leading_span1 values
+            span2: Polars Series or numpy array of leading_span2 values
+
+        Returns:
+            List of go.Scatter traces for colored cloud segments
+        """
+        # Convert to numpy arrays if needed
+        if hasattr(span1, "to_numpy"):
+            span1 = span1.to_numpy()
+        if hasattr(span2, "to_numpy"):
+            span2 = span2.to_numpy()
+
+        # Calculate bullish condition (span1 > span2)
+        # Handle NaN values by treating them as False
+        is_bullish = np.nan_to_num(span1 > span2, nan=False)
+
+        # Find crossover points where bullish condition changes
+        crossovers = np.where(np.diff(is_bullish.astype(int)) != 0)[0] + 1
+
+        # Create segment boundaries (start at 0, include all crossovers, end at len)
+        boundaries = np.concatenate([[0], crossovers, [len(dates)]])
+
+        traces = []
+
+        # For each segment between boundaries
+        for i in range(len(boundaries) - 1):
+            start_idx = boundaries[i]
+            end_idx = boundaries[i + 1]
+
+            # Extract segment data
+            segment_dates = dates[start_idx:end_idx]
+            segment_span1 = span1[start_idx:end_idx]
+            segment_span2 = span2[start_idx:end_idx]
+
+            # Skip if all values are NaN
+            if np.all(np.isnan(segment_span1)) or np.all(np.isnan(segment_span2)):
+                continue
+
+            # Determine segment color
+            segment_is_bullish = is_bullish[start_idx]
+            fillcolor = (
+                "rgba(135, 206, 250, 0.3)"
+                if segment_is_bullish
+                else "rgba(255, 165, 0, 0.3)"
+            )
+
+            # Create trace pair for this segment
+            # First trace: span1 (no fill)
+            traces.append(
+                go.Scatter(
+                    x=segment_dates,
+                    y=segment_span1,
+                    mode="lines",
+                    line={"width": 0.5, "color": "rgba(200,200,200,0.5)"},
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+
+            # Second trace: span2 (fill to previous = span1)
+            traces.append(
+                go.Scatter(
+                    x=segment_dates,
+                    y=segment_span2,
+                    mode="lines",
+                    line={"width": 0.5, "color": "rgba(200,200,200,0.5)"},
+                    fill="tonexty",
+                    fillcolor=fillcolor,
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+
+        return traces
 
     def get_ichimoku_fig(df: pl.DataFrame, values: IchimokuValues, name: str):
         # 日付を"YYYY-MM-DD"形式の文字列に変換（カテゴリ軸のラベルが綺麗になる）
@@ -350,27 +433,13 @@ def _(go, hist, mo, pl, stock_code, ticker):
                 mode="lines",
                 line={"color": "cornflowerblue", "width": 1},
             ),
-            # 雲の塗りつぶし
-            go.Scatter(
-                x=dates,
-                y=values["leading_span1"],
-                name="先行スパン1",
-                mode="lines",
-                fill=None,
-                line={"width": 1, "color": "gainsboro"},
-                showlegend=False,
-            ),
-            go.Scatter(
-                x=dates,
-                y=values["leading_span2"],
-                name="先行スパン2",
-                mode="lines",
-                fill="tonexty",
-                line={"width": 1, "color": "gainsboro"},
-                fillcolor="rgba(170,170,170,0.3)",  # 透過度0.3でローソク足が見やすく
-                showlegend=False,
-            ),
         ]
+
+        # 雲の塗りつぶし（陽転・陰転で色分け）
+        cloud_traces = create_cloud_segments(
+            dates=dates, span1=values["leading_span1"], span2=values["leading_span2"]
+        )
+        data.extend(cloud_traces)
         return go.Figure(data=data, layout=go.Layout(layout))
 
     values = get_ichimoku_values(hist)

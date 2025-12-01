@@ -1,5 +1,6 @@
-import polars as pl
 from typing import TypedDict
+
+import polars as pl
 
 
 class IchimokuValues(TypedDict):
