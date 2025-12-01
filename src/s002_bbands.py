@@ -74,7 +74,6 @@ def _(ticker):
 def _(go, info, moly, pl, stock_code, wkly):
     company_name = info.get("shortName", stock_code.value)
 
-
     def get_layout(label):
         return {
             "height": 560,
@@ -104,7 +103,6 @@ def _(go, info, moly, pl, stock_code, wkly):
             },
         }
 
-
     def to_float64(df):
         return df.with_columns(
             [
@@ -114,7 +112,6 @@ def _(go, info, moly, pl, stock_code, wkly):
                 pl.col("close.amount").cast(pl.Float64),
             ]
         )
-
 
     def get_plot_data(df, dates):
         return [
@@ -130,7 +127,6 @@ def _(go, info, moly, pl, stock_code, wkly):
                 name=f"{company_name}の株価",
             )
         ]
-
 
     wkly_layout = get_layout(label="週足")
     moly_layout = get_layout(label="月足")
@@ -393,15 +389,14 @@ def _(ka):
                 buffer.pop(0)
 
                 yield (upper, middle, lower, idx)
+
     return (bbands_streaming,)
 
 
 @app.cell
 def _(bbands_streaming, close, pl):
     # ジェネレーターでストリーミング処理を実行
-    stream_results = list(
-        bbands_streaming(close, period=20, dev_up=2.0, dev_down=2.0)
-    )
+    stream_results = list(bbands_streaming(close, period=20, dev_up=2.0, dev_down=2.0))
 
     # 結果をDataFrameに変換
     stream_upper = [r[0] for r in stream_results]
